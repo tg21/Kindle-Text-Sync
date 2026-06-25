@@ -15,6 +15,7 @@
     .save-button { position: fixed; right: 1rem; bottom: 1rem; background: #0f172a; color: #fff; border: none; padding: 0.8rem 1rem; border-radius: 999px; cursor: pointer; box-shadow: 0 10px 25px rgba(15,23,42,0.2); z-index: 1000; }
     .save-button:hover { background: #111827; }
     .save-status { position: fixed; right: 1rem; bottom: 4.5rem; background: rgba(255,255,255,0.95); color: #0f172a; padding: 0.5rem 0.75rem; border-radius: 0.75rem; box-shadow: 0 10px 25px rgba(15,23,42,0.12); font-size: 0.85rem; z-index: 1000; min-width: 8rem; text-align: right; }
+    .file-info { margin-top: 0.25rem; font-size: 0.85rem; opacity: 0.8; }
     a { color: #60a5fa; text-decoration: none; }
     a:hover { text-decoration: underline; }
   </style>
@@ -25,6 +26,7 @@
       <div>
         <h1>Markdown Editor</h1>
         <div class="status" id="status">Connecting...</div>
+        <div class="file-info" id="file-info"></div>
       </div>
       <div><a href="/" target="_blank">Preview</a></div>
     </header>
@@ -128,7 +130,9 @@
 
     const saveButton = document.getElementById('save-button');
     const saveStatus = document.getElementById('save-status');
+    const fileInfoEl = document.getElementById('file-info');
     function setSaveStatus(text) { if (saveStatus) saveStatus.textContent = text; }
+    function setFileInfo(text) { if (fileInfoEl) fileInfoEl.textContent = text; }
     if (saveButton) {
       saveButton.addEventListener('click', () => {
         setSaveStatus('Saving...');
@@ -141,6 +145,13 @@
           .catch(() => setSaveStatus('Save failed'));
       });
     }
+
+    fetch('/watch-info')
+      .then((res) => res.json())
+      .then((info) => {
+        setFileInfo(`Editing: ${info.watchFile}`);
+      })
+      .catch(() => setFileInfo('Editing: unknown file'));
 
     fetch('/markdown')
       .then((res) => res.text())

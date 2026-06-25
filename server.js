@@ -24,8 +24,18 @@ let WORK_DIR = '';
 let WATCH_FILE = process.env.WATCH_FILE || '';
 
 
-function createPage(bodyHtml) {
-  return `<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Markdown Preview</title>\n  <style>body{font-family:system-ui, sans-serif;line-height:1.6;margin:0;padding:1rem;max-width:50rem;min-width:320px;}img{max-width:100%;height:auto;}pre{white-space:pre-wrap;word-break:break-word;}code{font-family:Menlo,Monaco,Consolas,monospace;background:#f4f4f4;padding:0.2rem 0.35rem;border-radius:4px;}a{color:#0066cc;}blockquote{color:#444;border-left:4px solid #ddd;padding-left:1rem;margin-left:0;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:0.5rem;text-align:left;}@media (max-width:640px){body{padding:0.75rem;}}.save-floating{position:fixed;right:1rem;bottom:1rem;display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;z-index:1000;}button#save-button{background:#0f172a;color:#fff;border:none;padding:0.8rem 1rem;border-radius:999px;cursor:pointer;box-shadow:0 10px 25px rgba(15,23,42,0.2);}button#save-button:hover{background:#111827;}#save-status{font-size:0.85rem;color:#334155;background:rgba(255,255,255,0.9);padding:0.45rem 0.75rem;border-radius:0.75rem;box-shadow:0 10px 25px rgba(15,23,42,0.08);}</style>\n</head>\n<body>\n  <main>\n    ${bodyHtml}\n  </main>\n  <div class="save-floating">\n    <div id="save-status"></div>\n    <button id="save-button">Save to disk</button>\n  </div>\n  <script>\n    const source = new EventSource('/events');\n    source.addEventListener('update', (event) => {\n      const main = document.querySelector('main');\n      if (main) {\n        main.innerHTML = event.data;\n      }\n    });\n    source.addEventListener('error', () => source.close());\n    const saveButton = document.getElementById('save-button');\n    const saveStatus = document.getElementById('save-status');\n    function setSaveStatus(text) { if (saveStatus) saveStatus.textContent = text; }\n    if (saveButton) {\n      saveButton.addEventListener('click', () => {\n        setSaveStatus('Saving...');\n        fetch('/save', { method: 'POST' })\n          .then((res) => { if (!res.ok) throw new Error('Save failed'); setSaveStatus('Saved to disk'); setTimeout(() => setSaveStatus(''), 1500); })\n          .catch(() => setSaveStatus('Save failed'));\n      });\n    }\n  </script>\n</body>\n</html>`;
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function createPage(bodyHtml, watchedFile) {
+  const fileInfo = watchedFile ? `<div class="preview-file-info">Previewing: ${escapeHtml(watchedFile)}</div>` : '';
+  return `<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Markdown Preview</title>\n  <style>body{font-family:system-ui, sans-serif;line-height:1.6;margin:0;padding:1rem;max-width:50rem;min-width:320px;}img{max-width:100%;height:auto;}pre{white-space:pre-wrap;word-break:break-word;}code{font-family:Menlo,Monaco,Consolas,monospace;background:#f4f4f4;padding:0.2rem 0.35rem;border-radius:4px;}a{color:#0066cc;}blockquote{color:#444;border-left:4px solid #ddd;padding-left:1rem;margin-left:0;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:0.5rem;text-align:left;}@media (max-width:640px){body{padding:0.75rem;}}.preview-file-info{font-size:0.9rem;color:#475569;margin-bottom:1rem;} .save-floating{position:fixed;right:1rem;bottom:1rem;display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;z-index:1000;}button#save-button{background:#0f172a;color:#fff;border:none;padding:0.8rem 1rem;border-radius:999px;cursor:pointer;box-shadow:0 10px 25px rgba(15,23,42,0.2);}button#save-button:hover{background:#111827;}#save-status{font-size:0.85rem;color:#334155;background:rgba(255,255,255,0.9);padding:0.45rem 0.75rem;border-radius:0.75rem;box-shadow:0 10px 25px rgba(15,23,42,0.08);}</style>\n</head>\n<body>\n  <main>\n    ${fileInfo}\n    ${bodyHtml}\n  </main>\n  <div class="save-floating">\n    <div id="save-status"></div>\n    <button id="save-button">Save to disk</button>\n  </div>\n  <script>\n    const source = new EventSource('/events');\n    source.addEventListener('update', (event) => {\n      const main = document.querySelector('main');\n      if (main) {\n        const fileInfoEl = main.querySelector('.preview-file-info');\n        main.innerHTML = event.data;\n        if (fileInfoEl) {\n          main.insertBefore(fileInfoEl, main.firstChild);\n        }\n      }\n    });\n    source.addEventListener('error', () => source.close());\n    const saveButton = document.getElementById('save-button');\n    const saveStatus = document.getElementById('save-status');\n    function setSaveStatus(text) { if (saveStatus) saveStatus.textContent = text; }\n    if (saveButton) {\n      saveButton.addEventListener('click', () => {\n        setSaveStatus('Saving...');\n        fetch('/save', { method: 'POST' })\n          .then((res) => { if (!res.ok) throw new Error('Save failed'); setSaveStatus('Saved to disk'); setTimeout(() => setSaveStatus(''), 1500); })\n          .catch(() => setSaveStatus('Save failed'));\n      });\n    }\n  </script>\n</body>\n</html>`;
 }
 
 function writeOutput(html) {
@@ -134,12 +144,12 @@ function renderMarkdown() {
 
     lastMarkdownHash = currentHash;
     latestRenderedHtml = md.render(markdownContent);
-    writeOutput(createPage(latestRenderedHtml));
+    writeOutput(createPage(latestRenderedHtml, WATCH_FILE));
     broadcastPreview(latestRenderedHtml);
   } catch (error) {
     const message = `<p><strong>Error rendering markdown:</strong></p><pre>${String(error).replace(/</g, '&lt;')}</pre>`;
     latestRenderedHtml = message;
-    writeOutput(createPage(message));
+    writeOutput(createPage(message, WATCH_FILE));
     console.error('Render error:', error);
   }
 }
@@ -315,6 +325,16 @@ const server = http.createServer((req, res) => {
 
   if (url.pathname === '/save' && req.method === 'POST') {
     handleSavePost(req, res);
+    return;
+  }
+
+  if (url.pathname === '/watch-info' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+      workDir: WORK_DIR,
+      fileName: path.relative(WORK_DIR, WATCH_FILE),
+      watchFile: WATCH_FILE,
+    }));
     return;
   }
 
