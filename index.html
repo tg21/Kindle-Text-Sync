@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown Preview</title>
+  <style>body{font-family:system-ui, sans-serif;line-height:1.6;margin:0;padding:1rem;max-width:50rem;min-width:320px;}img{max-width:100%;height:auto;}pre{white-space:pre-wrap;word-break:break-word;}code{font-family:Menlo,Monaco,Consolas,monospace;background:#f4f4f4;padding:0.2rem 0.35rem;border-radius:4px;}a{color:#0066cc;}blockquote{color:#444;border-left:4px solid #ddd;padding-left:1rem;margin-left:0;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:0.5rem;text-align:left;}@media (max-width:640px){body{padding:0.75rem;}}</style>
+</head>
+<body>
+  <main>
+    <p>hello</p>
+<h1>there is something wrong</h1>
+<ul>
+<li>we don’t know what’s happening</li>
+<li>maybe we can do esomething about it</li>
+<li>no let’s see whow it goes</li>
+<li>is this faster?</li>
+<li>no thiss is worse</li>
+<li>maybe not</li>
+<li>let stry one more thing</li>
+<li>kets see if this isf aster</li>
+<li>I think know I shold be d</li>
+</ul>
+
+  </main>
+  <script>
+    const source = new EventSource('/events');
+    source.addEventListener('update', (event) => {
+      const main = document.querySelector('main');
+      if (main) {
+        main.innerHTML = event.data;
+      }
+    });
+    source.addEventListener('error', () => source.close());
+  </script>
+</body>
+</html>

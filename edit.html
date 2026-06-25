@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown Editor</title>
+  <style>
+    body { margin: 0; min-height: 100vh; font-family: system-ui, sans-serif; background: #f3f4f6; color: #111; }
+    main { display: flex; flex-direction: column; height: 100vh; }
+    header { padding: 1rem; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    header h1 { margin: 0; font-size: 1rem; font-weight: 600; }
+    .status { font-size: 0.9rem; opacity: 0.8; }
+    textarea { flex: 1; width: 100%; border: none; resize: none; padding: 1rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 1rem; line-height: 1.5; background: #fff; color: #111; }
+    .footer { padding: 0.75rem 1rem; font-size: 0.9rem; background: #e2e8f0; color: #111827; }
+    .save-button { position: fixed; right: 1rem; bottom: 1rem; background: #0f172a; color: #fff; border: none; padding: 0.8rem 1rem; border-radius: 999px; cursor: pointer; box-shadow: 0 10px 25px rgba(15,23,42,0.2); z-index: 1000; }
+    .save-button:hover { background: #111827; }
+    .save-status { position: fixed; right: 1rem; bottom: 4.5rem; background: rgba(255,255,255,0.95); color: #0f172a; padding: 0.5rem 0.75rem; border-radius: 0.75rem; box-shadow: 0 10px 25px rgba(15,23,42,0.12); font-size: 0.85rem; z-index: 1000; min-width: 8rem; text-align: right; }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Markdown Editor</h1>
+        <div class="status" id="status">Connecting...</div>
+      </div>
+      <div><a href="/" target="_blank">Preview</a></div>
+    </header>
+    <textarea id="editor" spellcheck="false"></textarea>
+    <div class="footer">Live editing is synced through the backend immediately. Open another /edit.html to see the same content.</div>
+    <button id="save-button" class="save-button">Save to disk</button>
+    <div id="save-status" class="save-status"></div>
+  </main>
+  <script>
+    const editor = document.getElementById('editor');
+    const status = document.getElementById('status');
+    const clientId = Math.random().toString(36).slice(2);
+    let isApplyingRemote = false;
+
+    function setStatus(text) {
+      status.textContent = text;
+    }
+
+    let lastSelection = { start: editor.selectionStart, end: editor.selectionEnd };
+
+    function sendEditState() {
+      const payload = {
+        clientId,
+        markdown: editor.value,
+        selectionStart: editor.selectionStart,
+        selectionEnd: editor.selectionEnd,
+      };
+      lastSelection = { start: editor.selectionStart, end: editor.selectionEnd };
+      fetch('/edit-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(payload),
+      }).catch(() => {
+        setStatus('Error sending update');
+      });
+    }
+
+    function sendSelectionIfChanged() {
+      if (isApplyingRemote) return;
+      const currentSelection = { start: editor.selectionStart, end: editor.selectionEnd };
+      if (currentSelection.start === lastSelection.start && currentSelection.end === lastSelection.end) {
+        return;
+      }
+      sendEditState();
+    }
+
+    editor.addEventListener('input', () => {
+      if (isApplyingRemote) return;
+      setStatus('Editing...');
+      sendEditState();
+      setStatus('Sent to backend');
+    });
+
+    editor.addEventListener('select', () => {
+      sendSelectionIfChanged();
+    });
+
+    editor.addEventListener('keyup', () => {
+      sendSelectionIfChanged();
+    });
+
+    editor.addEventListener('mouseup', () => {
+      sendSelectionIfChanged();
+    });
+
+    editor.addEventListener('touchend', () => {
+      sendSelectionIfChanged();
+    });
+
+    document.addEventListener('selectionchange', () => {
+      if (document.activeElement === editor) {
+        sendSelectionIfChanged();
+      }
+    });
+
+    const editSource = new EventSource('/edit-events');
+
+    editSource.addEventListener('edit-state', (event) => {
+      try {
+        const state = JSON.parse(event.data);
+        if (state.originId === clientId) {
+          return;
+        }
+
+        isApplyingRemote = true;
+        if (state.markdown !== editor.value) {
+          editor.value = state.markdown;
+        }
+        if (typeof state.selectionStart === 'number' && typeof state.selectionEnd === 'number') {
+          editor.setSelectionRange(state.selectionStart, state.selectionEnd);
+        }
+        isApplyingRemote = false;
+        setStatus('Synced from backend');
+      } catch (err) {
+        console.error('Invalid edit-state', err);
+      }
+    });
+
+    editSource.addEventListener('open', () => setStatus('Connected'));
+    editSource.addEventListener('error', () => setStatus('Connection lost'));
+
+    const saveButton = document.getElementById('save-button');
+    const saveStatus = document.getElementById('save-status');
+    function setSaveStatus(text) { if (saveStatus) saveStatus.textContent = text; }
+    if (saveButton) {
+      saveButton.addEventListener('click', () => {
+        setSaveStatus('Saving...');
+        fetch('/save', { method: 'POST' })
+          .then((res) => {
+            if (!res.ok) throw new Error('Save failed');
+            setSaveStatus('Saved to disk');
+            setTimeout(() => setSaveStatus(''), 1500);
+          })
+          .catch(() => setSaveStatus('Save failed'));
+      });
+    }
+
+    fetch('/markdown')
+      .then((res) => res.text())
+      .then((text) => {
+        editor.value = text;
+        setStatus('Loaded');
+      })
+      .catch(() => setStatus('Failed to load content'));
+  </script>
+</body>
+</html>

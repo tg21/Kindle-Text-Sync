@@ -1,0 +1,16 @@
+{
+  "name": "markdown-file-watcher-server",
+  "version": "1.0.0",
+  "description": "Watch a markdown file, render it to index.html, and serve a lightweight auto-refreshing page.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "chokidar": "^3.5.4",
+    "markdown-it": "^13.0.1"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
