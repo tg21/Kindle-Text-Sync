@@ -12,8 +12,10 @@ A small Node.js server that keeps markdown in backend memory and offers:
 
 1. Run `npm install`
 2. Run `npm start`
-3. Open `http://localhost:3000/edit.html` to edit
-4. Open `http://localhost:3000/` to preview
+3. On first startup, answer prompts for the working directory and markdown filename.
+4. Config is saved to `.kts_data` in the project directory and reused on subsequent starts.
+5. Open `http://localhost:3000/edit.html` to edit
+6. Open `http://localhost:3000/` to preview
 
 ## Features
 
@@ -24,7 +26,14 @@ A small Node.js server that keeps markdown in backend memory and offers:
 
 ## Configuration
 
-You can override defaults with environment variables:
+On first startup the server prompts for:
+
+- working directory for markdown files
+- markdown file name inside that directory
+
+This information is stored in `.kts_data` inside the project directory and reused on later startups. Existing values are offered as defaults each time the server starts.
+
+You can still override the watched file path at runtime with environment variables:
 
 - `WATCH_FILE` - path to the markdown source file to load at startup and save to
 - `PORT` - server port
@@ -42,6 +51,7 @@ npm start
 - `GET /` - rendered preview page
 - `GET /edit.html` - raw markdown editor page
 - `GET /markdown` - current raw markdown from backend memory
+- `GET /watch-info` - JSON with current watch file and working directory
 - `POST /edit-state` - editor state updates (markdown + selection)
 - `POST /save` - persist backend markdown to `WATCH_FILE`
 
