@@ -49,3 +49,7 @@ npm start
 
 - The app no longer waits for the watched markdown file to change before updating the preview.
 - The editor page sends edits immediately; the server debounces preview rendering only.
+
+
+## local development special
+ - stop tracking updates to following files `git update-index --skip-worktree .\.kts_data .\index.html`

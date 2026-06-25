@@ -1,11 +1,13 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const readline = require('readline');
 const crypto = require('crypto');
 const chokidar = require('chokidar');
 const MarkdownIt = require('markdown-it');
 
-const WATCH_FILE = process.env.WATCH_FILE || 'D:\\Code\\obsidian\\test-v1\\test.md';
+const PROJECT_DIR = __dirname;
+const CONFIG_FILE = path.join(PROJECT_DIR, '.kts_data');
 const PORT = Number(process.env.PORT) || 3000;
 const DEBOUNCE_MS = 50;
 
@@ -18,6 +20,9 @@ let renderTimer = null;
 let latestRenderedHtml = '';
 let latestPageHtml = '';
 let latestSelection = { start: 0, end: 0 };
+let WORK_DIR = '';
+let WATCH_FILE = process.env.WATCH_FILE || '';
+
 
 function createPage(bodyHtml) {
   return `<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Markdown Preview</title>\n  <style>body{font-family:system-ui, sans-serif;line-height:1.6;margin:0;padding:1rem;max-width:50rem;min-width:320px;}img{max-width:100%;height:auto;}pre{white-space:pre-wrap;word-break:break-word;}code{font-family:Menlo,Monaco,Consolas,monospace;background:#f4f4f4;padding:0.2rem 0.35rem;border-radius:4px;}a{color:#0066cc;}blockquote{color:#444;border-left:4px solid #ddd;padding-left:1rem;margin-left:0;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ddd;padding:0.5rem;text-align:left;}@media (max-width:640px){body{padding:0.75rem;}}.save-floating{position:fixed;right:1rem;bottom:1rem;display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;z-index:1000;}button#save-button{background:#0f172a;color:#fff;border:none;padding:0.8rem 1rem;border-radius:999px;cursor:pointer;box-shadow:0 10px 25px rgba(15,23,42,0.2);}button#save-button:hover{background:#111827;}#save-status{font-size:0.85rem;color:#334155;background:rgba(255,255,255,0.9);padding:0.45rem 0.75rem;border-radius:0.75rem;box-shadow:0 10px 25px rgba(15,23,42,0.08);}</style>\n</head>\n<body>\n  <main>\n    ${bodyHtml}\n  </main>\n  <div class="save-floating">\n    <div id="save-status"></div>\n    <button id="save-button">Save to disk</button>\n  </div>\n  <script>\n    const source = new EventSource('/events');\n    source.addEventListener('update', (event) => {\n      const main = document.querySelector('main');\n      if (main) {\n        main.innerHTML = event.data;\n      }\n    });\n    source.addEventListener('error', () => source.close());\n    const saveButton = document.getElementById('save-button');\n    const saveStatus = document.getElementById('save-status');\n    function setSaveStatus(text) { if (saveStatus) saveStatus.textContent = text; }\n    if (saveButton) {\n      saveButton.addEventListener('click', () => {\n        setSaveStatus('Saving...');\n        fetch('/save', { method: 'POST' })\n          .then((res) => { if (!res.ok) throw new Error('Save failed'); setSaveStatus('Saved to disk'); setTimeout(() => setSaveStatus(''), 1500); })\n          .catch(() => setSaveStatus('Save failed'));\n      });\n    }\n  </script>\n</body>\n</html>`;
@@ -29,6 +34,95 @@ function writeOutput(html) {
 
 function hashString(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function prompt(question, defaultValue) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const suffix = defaultValue ? ` [${defaultValue}]` : '';
+    rl.question(`${question}${suffix}: `, (answer) => {
+      rl.close();
+      resolve(answer.trim() || defaultValue || '');
+    });
+  });
+}
+
+function isSubPath(parent, child) {
+  const relative = path.relative(parent, child);
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function normalizePath(p) {
+  return path.resolve(p.trim());
+}
+
+function loadConfig() {
+  try {
+    const raw = fs.readFileSync(CONFIG_FILE, 'utf8').trim();
+    if (!raw) {
+      return {};
+    }
+    return JSON.parse(raw);
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveConfig(config) {
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+}
+
+async function configureWatchFile() {
+  const config = loadConfig();
+  let workDir = config.workDir || PROJECT_DIR;
+  let fileName = config.fileName || 'test.md';
+
+  while (true) {
+    const dirAnswer = await prompt('Enter a working directory for markdown files', workDir);
+    const resolvedDir = normalizePath(dirAnswer || PROJECT_DIR);
+    if (!fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) {
+      console.log(`Directory does not exist: ${resolvedDir}`);
+      continue;
+    }
+    workDir = resolvedDir;
+    break;
+  }
+
+  while (true) {
+    const fileAnswer = await prompt('Enter the markdown file name in that directory', fileName);
+    const relativeFile = fileAnswer || fileName;
+    const resolvedPath = normalizePath(path.join(workDir, relativeFile));
+    if (!isSubPath(workDir, resolvedPath) && path.resolve(relativeFile) !== resolvedPath) {
+      console.log('Please enter a file name relative to the chosen working directory.');
+      continue;
+    }
+    fileName = path.relative(workDir, resolvedPath);
+
+    const watchPath = path.join(workDir, fileName);
+    if (!fs.existsSync(watchPath)) {
+      const createAnswer = await prompt(`File does not exist. Create ${watchPath}?`, 'yes');
+      if (createAnswer.toLowerCase().startsWith('y')) {
+        fs.writeFileSync(watchPath, '', 'utf8');
+        console.log(`Created file: ${watchPath}`);
+        break;
+      }
+      continue;
+    }
+    break;
+  }
+
+  if (config.workDir !== workDir || config.fileName !== fileName) {
+    config.workDir = workDir;
+    config.fileName = fileName;
+    saveConfig(config);
+  }
+
+  WORK_DIR = workDir;
+  WATCH_FILE = path.join(WORK_DIR, fileName);
 }
 
 function renderMarkdown() {
@@ -280,31 +374,40 @@ const server = http.createServer((req, res) => {
   res.end('Not found');
 });
 
-server.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-  console.log(`Watching markdown file: ${WATCH_FILE}`);
-  loadMarkdownFromFile();
-  renderMarkdown();
-});
+async function initServer() {
+  await configureWatchFile();
 
-const watcher = chokidar.watch(WATCH_FILE, {
-  ignoreInitial: true,
-  awaitWriteFinish: {
-    stabilityThreshold: 150,
-    pollInterval: 100,
-  },
-});
+  server.listen(PORT, () => {
+    console.log(`Server listening on http://localhost:${PORT}`);
+    console.log(`Watching markdown file: ${WATCH_FILE}`);
+    loadMarkdownFromFile();
+    renderMarkdown();
+  });
 
-watcher.on('add', () => {
-  loadMarkdownFromFile();
-  scheduleRender();
+  const watcher = chokidar.watch(WATCH_FILE, {
+    ignoreInitial: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 150,
+      pollInterval: 100,
+    },
+  });
+
+  watcher.on('add', () => {
+    loadMarkdownFromFile();
+    scheduleRender();
+  });
+  watcher.on('change', () => {
+    loadMarkdownFromFile();
+    scheduleRender();
+  });
+  watcher.on('unlink', () => {
+    markdownContent = '';
+    scheduleRender();
+  });
+  watcher.on('error', (error) => console.error('Watcher error:', error));
+}
+
+initServer().catch((error) => {
+  console.error('Failed to initialize server:', error);
+  process.exit(1);
 });
-watcher.on('change', () => {
-  loadMarkdownFromFile();
-  scheduleRender();
-});
-watcher.on('unlink', () => {
-  markdownContent = '';
-  scheduleRender();
-});
-watcher.on('error', (error) => console.error('Watcher error:', error));
