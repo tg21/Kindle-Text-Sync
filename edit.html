@@ -39,13 +39,39 @@
     const editor = document.getElementById('editor');
     const status = document.getElementById('status');
     const clientId = Math.random().toString(36).slice(2);
+    const REMOTE_SYNC_COOLDOWN_MS = 2500;
     let isApplyingRemote = false;
+    let localEditSuppressionUntil = 0;
+    let pendingEditSendTimer = null;
 
     function setStatus(text) {
       status.textContent = text;
     }
 
     let lastSelection = { start: editor.selectionStart, end: editor.selectionEnd };
+
+    function clearPendingEditSend() {
+      if (pendingEditSendTimer) {
+        clearTimeout(pendingEditSendTimer);
+        pendingEditSendTimer = null;
+      }
+    }
+
+    function queueEditStateSend() {
+      if (isApplyingRemote) return;
+      const now = Date.now();
+      if (now < localEditSuppressionUntil) {
+        clearPendingEditSend();
+        pendingEditSendTimer = setTimeout(() => {
+          pendingEditSendTimer = null;
+          if (Date.now() >= localEditSuppressionUntil) {
+            sendEditState();
+          }
+        }, localEditSuppressionUntil - now);
+        return;
+      }
+      sendEditState();
+    }
 
     function sendEditState() {
       const payload = {
@@ -65,18 +91,18 @@
     }
 
     function sendSelectionIfChanged() {
-      if (isApplyingRemote) return;
+      if (isApplyingRemote || Date.now() < localEditSuppressionUntil) return;
       const currentSelection = { start: editor.selectionStart, end: editor.selectionEnd };
       if (currentSelection.start === lastSelection.start && currentSelection.end === lastSelection.end) {
         return;
       }
-      sendEditState();
+      queueEditStateSend();
     }
 
     editor.addEventListener('input', () => {
-      if (isApplyingRemote) return;
+      if (isApplyingRemote || Date.now() < localEditSuppressionUntil) return;
       setStatus('Editing...');
-      sendEditState();
+      queueEditStateSend();
       setStatus('Sent to backend');
     });
 
@@ -118,7 +144,12 @@
         if (typeof state.selectionStart === 'number' && typeof state.selectionEnd === 'number') {
           editor.setSelectionRange(state.selectionStart, state.selectionEnd);
         }
-        isApplyingRemote = false;
+        lastSelection = { start: editor.selectionStart, end: editor.selectionEnd };
+        localEditSuppressionUntil = Date.now() + REMOTE_SYNC_COOLDOWN_MS;
+        clearPendingEditSend();
+        window.setTimeout(() => {
+          isApplyingRemote = false;
+        }, REMOTE_SYNC_COOLDOWN_MS);
         setStatus('Synced from backend');
       } catch (err) {
         console.error('Invalid edit-state', err);
