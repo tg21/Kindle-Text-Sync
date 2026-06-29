@@ -39,7 +39,7 @@
     const editor = document.getElementById('editor');
     const status = document.getElementById('status');
     const clientId = Math.random().toString(36).slice(2);
-    const REMOTE_SYNC_COOLDOWN_MS = 2500;
+    const REMOTE_SYNC_COOLDOWN_MS = 1000;
     let isApplyingRemote = false;
     let localEditSuppressionUntil = 0;
     let pendingEditSendTimer = null;
